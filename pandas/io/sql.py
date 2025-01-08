@@ -1006,7 +1006,7 @@ class SQLTable(PandasObject):
            Each item contains a list of values to be inserted
         """
         data = [dict(zip(keys, row)) for row in data_iter]
-        result = conn.execute(self.table.insert(), data)
+        result = self.pd_sql.execute(self.table.insert(), data)
         return result.rowcount
 
     def _execute_insert_multi(self, conn, keys: list[str], data_iter) -> int:
@@ -1023,7 +1023,7 @@ class SQLTable(PandasObject):
 
         data = [dict(zip(keys, row)) for row in data_iter]
         stmt = insert(self.table).values(data)
-        result = conn.execute(stmt)
+        result = self.pd_sql.execute(stmt)
         return result.rowcount
 
     def insert_data(self) -> tuple[list[str], list[np.ndarray]]:
@@ -1662,8 +1662,14 @@ class SQLDatabase(PandasSQL):
         """Simple passthrough to SQLAlchemy connectable"""
         args = [] if params is None else [params]
         if isinstance(sql, str):
-            return self.con.exec_driver_sql(sql, *args)
-        return self.con.execute(sql, *args)
+            execute_function = self.con.exec_driver_sql
+        else:
+            execute_function = self.con.execute
+
+        try:
+            return execute_function(sql, *args)
+        except Exception as exc:
+            raise DatabaseError(f"Execution failed on sql '{sql}': {exc}") from exc
 
     def read_table(
         self,
@@ -2077,9 +2083,9 @@ class SQLDatabase(PandasSQL):
             self.meta.reflect(
                 bind=self.con, only=[table_name], schema=schema, views=True
             )
-            with self.run_transaction() as con:
+            with self.run_transaction():
                 table = self.get_table(table_name, schema)
-                con.execute(table.delete())
+                self.execute(table.delete())
 
             self.meta.clear()
 
@@ -2403,9 +2409,12 @@ class ADBCDatabase(PandasSQL):
             raise ValueError("datatypes not supported") from exc
 
         with self.con.cursor() as cur:
-            total_inserted = cur.adbc_ingest(
-                table_name=name, data=tbl, mode=mode, db_schema_name=schema
-            )
+            try:
+                total_inserted = cur.adbc_ingest(
+                    table_name=name, data=tbl, mode=mode, db_schema_name=schema
+                )
+            except Exception as exc:
+                raise DatabaseError("Execution failed") from exc
 
         self.con.commit()
         return total_inserted
@@ -2431,8 +2440,7 @@ class ADBCDatabase(PandasSQL):
     def delete_rows(self, name: str, schema: str | None = None) -> None:
         table_name = f"{schema}.{name}" if schema else name
         if self.has_table(name, schema):
-            with self.con.cursor() as cur:
-                cur.execute(f"DELETE FROM {table_name}")
+            self.execute(f"DELETE FROM {table_name}").close()
 
     def _create_sql_schema(
         self,
@@ -2553,7 +2561,10 @@ class SQLiteTable(SQLTable):
 
     def _execute_insert(self, conn, keys, data_iter) -> int:
         data_list = list(data_iter)
-        conn.executemany(self.insert_statement(num_rows=1), data_list)
+        try:
+            conn.executemany(self.insert_statement(num_rows=1), data_list)
+        except Exception as exc:
+            raise DatabaseError("Execution failed") from exc
         return conn.rowcount
 
     def _execute_insert_multi(self, conn, keys, data_iter) -> int:

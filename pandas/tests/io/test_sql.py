@@ -2718,7 +2718,6 @@ def test_delete_rows_success(conn_name, test_frame1, request):
 
 @pytest.mark.parametrize("conn_name", all_connectable)
 def test_delete_rows_is_atomic(conn_name, request):
-    adbc_driver_manager = pytest.importorskip("adbc_driver_manager")
     sqlalchemy = pytest.importorskip("sqlalchemy")
 
     table_name = "temp_frame"
@@ -2737,20 +2736,11 @@ def test_delete_rows_is_atomic(conn_name, request):
     with pandasSQL.run_transaction() as cur:
         cur.execute(table_stmt)
 
-    if conn_name != "sqlite_buildin" and "adbc" not in conn_name:
-        expected_exception = sqlalchemy.exc.IntegrityError
-    elif "adbc" in conn_name and "sqlite" in conn_name:
-        expected_exception = adbc_driver_manager.InternalError
-    elif "adbc" in conn_name and "postgres" in conn_name:
-        expected_exception = adbc_driver_manager.ProgrammingError
-    elif conn_name == "sqlite_buildin":
-        expected_exception = sqlite3.IntegrityError
-
     with pandasSQL.run_transaction():
         pandasSQL.to_sql(original_df, table_name, if_exists="append", index=False)
 
     # inserting duplicated values in a UNIQUE constraint column
-    with pytest.raises(expected_exception):
+    with pytest.raises(pd.errors.DatabaseError):
         with pandasSQL.run_transaction():
             pandasSQL.to_sql(
                 replacing_df, table_name, if_exists="delete_rows", index=False
@@ -3473,8 +3463,8 @@ def test_to_sql_with_negative_npinf(conn, request, input):
             mark = pytest.mark.xfail(reason="GH 36465")
             request.applymarker(mark)
 
-        msg = "inf cannot be used with MySQL"
-        with pytest.raises(ValueError, match=msg):
+        msg = "Execution failed on sql"
+        with pytest.raises(pd.errors.DatabaseError, match=msg):
             df.to_sql(name="foobar", con=conn, index=False)
     else:
         assert df.to_sql(name="foobar", con=conn, index=False) == 1
