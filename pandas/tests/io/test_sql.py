@@ -2728,7 +2728,7 @@ def test_delete_rows_is_atomic(conn_name, request):
 
     # setting dtype is mandatory for adbc related tests
     original_df = DataFrame({"a": [1, 2], "b": [3, 4]}, dtype="int32")
-    replacing_df = DataFrame({"a": [5, 6], "b": [7, 7]}, dtype="int32")
+    replacing_df = DataFrame({"a": [5, 6, 7], "b": [8, 8, 8]}, dtype="int32")
 
     conn = request.getfixturevalue(conn_name)
     pandasSQL = pandasSQL_builder(conn)
