@@ -76,6 +76,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy import Table
     from sqlalchemy.sql.expression import (
+        Delete,
         Select,
         TextClause,
     )
@@ -1658,7 +1659,7 @@ class SQLDatabase(PandasSQL):
         else:
             yield self.con
 
-    def execute(self, sql: str | Select | TextClause, params=None):
+    def execute(self, sql: str | Select | TextClause | Delete, params=None):
         """Simple passthrough to SQLAlchemy connectable"""
         args = [] if params is None else [params]
         if isinstance(sql, str):
